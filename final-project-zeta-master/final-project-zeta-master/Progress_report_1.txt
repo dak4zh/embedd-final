@@ -1,0 +1,7 @@
+Task -                                                Team Member
+Accelerometer interfacing                         - Mukundan Ram Mohan
+Increasing difficulty with time                   - Dawit Kahsay
+Continuously populate with cubes(difficulty)      - James Hayes
+Spaceship and directional shooter                 - Eddie Russell
+Cubes 2.0                                         - James nand Dawit
+Final Report                                      - Mukundan Ram Mohan
