@@ -142,7 +142,7 @@ void Producer(void){
 	unsigned static long LastTime;  // time at previous ADC sample
 	unsigned long thisTime;         // time at current ADC sample
 	long jitter;                    // time between measured and expected, in us
-	if (NumSamples < RUNLENGTH){
+	if (1){
 			BSP_Joystick_Input(&rawX,&rawY,&select);
 		thisTime = OS_Time();       // current time, 12.5 ns
 		UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
@@ -222,17 +222,22 @@ void SW1Push(void){
 // inputs:  none
 // outputs: none
 void Consumer(void){
-	while(NumSamples < RUNLENGTH){
+	while(1){
+		
+
 
 		jsDataType data;
 		JsFifo_Get(&data);
+		
+		//score++;
+		
 		OS_bWait(&LCDFree);
 			
 		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
 		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
 		BSP_LCD_Message(1, 5, 1, "Score ", score);		
-		BSP_LCD_Message(1, 5, 12, "Life ", life);
+		//BSP_LCD_Message(1, 5, 12, "Life ", life);
 		
 		//BSP_LCD_DrawCube(x1_pos, y1_pos, color1);
 		
@@ -243,10 +248,11 @@ void Consumer(void){
 		prevx = data.x; 
 		prevy = data.y;
 		
+		/*
 				if (life == 0){
 					break;
 				}
-		
+		*/
 	}
   OS_Kill();  // done
 }
@@ -257,12 +263,12 @@ void Consumer(void){
 void CubeNumCalc(void){ 
 	uint16_t CurrentX,CurrentY;
   while(1) {
-		if(NumSamples < RUNLENGTH){
+		//if(NumSamples < RUNLENGTH){
 			CurrentX = x; CurrentY = y;
 			area[0] = CurrentX / 22;
 			area[1] = CurrentY / 20;
 			Calculation++;
-		}
+		//}
   }
 }
 
@@ -272,6 +278,7 @@ void CubeNumCalc(void){
 static uint32_t CubeNum = 0;
 void CubeThread1 (void){
 
+	int interval;
 	unsigned char i,j;	 
 	int32_t status,cube;
 	int oldx, oldy, olddir ,a,b, newdir;
@@ -307,7 +314,7 @@ void CubeThread1 (void){
 */
 			
 			CubeArray[i].available = 0; // make this tcb no longer available
-			CubeArray[i].position[0]= next_small_random()%5; //0-5
+			CubeArray[i].position[0]= next_small_random()%6; //0-5
 			CubeArray[i].position[1]= 0; //0-5
 			CubeArray[i].direction= 3; //0-3
 			CubeArray[i].color= COLORS[rcolor]; //0-10 //DONE
@@ -387,6 +394,9 @@ void CubeThread1 (void){
  // 3.move the cube while it is not hit or expired
 	while(life){ // Implement until the game is over
 		while( CubeArray[i].hit == 0 && !(CubeArray[i].expired) ){
+			
+			//score++;
+			
 		// first, check if the object is hit by the crosshair
 			if(area[0]== CubeArray[i].position[0] && area[1]== CubeArray[i].position[1]){
 			//if(cube1.hit){
@@ -395,7 +405,7 @@ void CubeThread1 (void){
 				BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
 				OS_bSignal(&LCDFree);
 				
-				score++;
+				//score++;
 				
 				CubeArray[i].hit = 1;
 				//OS_bSignal(&CubeArray[i][j].CubeFree); //COME BACK TO THIS!!!!!!!!!!!!!
@@ -406,7 +416,7 @@ void CubeThread1 (void){
 				OS_bWait(&LCDFree);
 				BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
 				OS_bSignal(&LCDFree);
-				life--;
+				//life--;
 
 				//OS_bSignal(&CubeArray[i][j].CubeFree); //COME BACK TO THIS!!!!!!!!!!!!!
 			}
@@ -442,7 +452,7 @@ void CubeThread1 (void){
 				    // OS_bSignal(&LCDFree);
               	//	OS_Sleep(100);	;	
 							//	OS_bWait(&LCDFree);
-					CubeArray[i].position[0]= next_small_random()%5; //0-5
+					CubeArray[i].position[0]= next_small_random()%6; //0-5
 			    CubeArray[i].position[1]= 0;
 					BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], CubeArray[i].color);	
 				
@@ -469,7 +479,16 @@ void CubeThread1 (void){
 				
 				//Signal
 					OS_bSignal(&LCDFree);
-					OS_Sleep(100);	
+					//OS_Sleep(400);
+
+						interval = 4000 - score;
+						
+						if (interval <500){
+							OS_Sleep(500);
+						}
+						else{						
+							OS_Sleep(4000-score);
+						}
 					}
 				//}
 					
@@ -568,8 +587,30 @@ void CubeThread1 (void){
 	OS_Kill(); //Life = 0, game is over, kill the thread
 }
 
+void Score (void){
+	while(1){
+	
+		score++;
+		
+		OS_Sleep(20);
+	}
+	//OS_Kill();
+}
 
 
+
+void Populate (void){
+	while(1){
+	
+		if (NumCreated < 7){
+			
+			NumCreated += OS_AddThread(&CubeThread1,128,2);
+			
+		}
+		OS_Sleep(1000);
+	}
+	OS_Kill();
+}
 
 
 
@@ -607,6 +648,7 @@ int main(void){
 //*******attach background tasks***********
   OS_AddSW1Task(&SW1Push,2);
   OS_AddPeriodicThread(&Producer,PERIOD,1); // 2 kHz real time sampling of PD3
+	//OS_AddPeriodicThread(&Score,PERIOD,2);
 	
 	/*
 		for(a = 0; a < VERTICALNUM; a++){
@@ -626,10 +668,15 @@ int main(void){
 
   NumCreated += OS_AddThread(&Consumer,128,1); 
 	NumCreated += OS_AddThread(&CubeNumCalc,128,1);
-	for (i=0;i<randcubes;i++){
+	NumCreated += OS_AddThread(&Populate,128,2);
+	NumCreated += OS_AddThread(&Score,128,1);
+
+	
+	/*
+	for (i=0;i<1;i++){
 		NumCreated += OS_AddThread(&CubeThread1,128,2);
 	}
-
+*/
 
 	
  
