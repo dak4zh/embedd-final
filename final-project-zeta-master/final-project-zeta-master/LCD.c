@@ -1454,8 +1454,31 @@ void BSP_LCD_Message (int device, int line, int col, char *string, unsigned int 
 //					color		specifies the color of the crosshair
 // outputs: none
 void BSP_LCD_DrawCrosshair(int16_t x, int16_t y, int16_t color) {
-	BSP_LCD_DrawFastVLine(x, y - 4, 9, color);
-	BSP_LCD_DrawFastHLine(x-4, y, 9, color);
+	BSP_LCD_DrawFastVLine(x, y - 4, 5, LCD_GREY);
+	BSP_LCD_DrawFastHLine(x-4, y, 9, LCD_GREY);
+	BSP_LCD_DrawFastHLine(x-3, y - 1, 7, LCD_GREY);
+	BSP_LCD_DrawFastHLine(x-2, y - 2, 5, LCD_GREY);
+	BSP_LCD_DrawFastHLine(x-1, y - 3, 3, LCD_GREY);
+	BSP_LCD_DrawFastVLine(x, y + 4, 3, LCD_ORANGE);
+	BSP_LCD_DrawFastVLine(x-1, y + 4, 2, LCD_ORANGE);
+	BSP_LCD_DrawFastVLine(x+1, y + 4, 2, LCD_ORANGE);
+	BSP_LCD_DrawFastVLine(x, y + 4, 2, LCD_YELLOW);
+	BSP_LCD_DrawFastVLine(x+4, y -3, 3, LCD_GREY);
+	BSP_LCD_DrawFastVLine(x-4, y -3, 3, LCD_GREY);
+}
+
+void BSP_LCD_EraseCrosshair(int16_t x, int16_t y, int16_t color) {
+	BSP_LCD_DrawFastVLine(x, y - 4, 5, LCD_BLACK);
+	BSP_LCD_DrawFastHLine(x-4, y, 9, LCD_BLACK);
+	BSP_LCD_DrawFastHLine(x-3, y - 1, 7, LCD_BLACK);
+	BSP_LCD_DrawFastHLine(x-2, y - 2, 5, LCD_BLACK);
+	BSP_LCD_DrawFastHLine(x-1, y - 3, 3, LCD_BLACK);
+	BSP_LCD_DrawFastVLine(x, y + 4, 3, LCD_BLACK);
+	BSP_LCD_DrawFastVLine(x-1, y + 4, 2, LCD_BLACK);
+	BSP_LCD_DrawFastVLine(x+1, y + 4, 2, LCD_BLACK);
+	BSP_LCD_DrawFastVLine(x, y + 4, 2, LCD_BLACK);
+	BSP_LCD_DrawFastVLine(x+4, y -3, 3, LCD_BLACK);
+	BSP_LCD_DrawFastVLine(x-4, y -3, 3, LCD_BLACK);
 }
 
 void BSP_LCD_DrawCube(int16_t x, int16_t y, int16_t color) {
@@ -1557,4 +1580,13 @@ void BSP_LCD_DrawCube(int16_t x, int16_t y, int16_t color) {
 	BSP_LCD_DrawFastVLine(x_new + i, y_new, 20, color);
 	}
 	
+}
+
+void BSP_LCD_DrawProjectile(int16_t x, int16_t y, int16_t color)
+{
+	int i;
+	for (i = -2; i < 3; i++){
+		BSP_LCD_DrawFastVLine(x+i, y - 2 - 5, 5, color);
+	}
+
 }

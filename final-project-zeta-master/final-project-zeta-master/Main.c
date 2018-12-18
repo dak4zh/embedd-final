@@ -8,6 +8,7 @@
 // Modified by Mustafa Hotaki 7/29/18, mkh3cf@virginia.edu
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "OS.h"
 #include "tm4c123gh6pm.h"
 #include "LCD.h"
@@ -16,6 +17,7 @@
 #include "FIFO.h"
 #include "joystick.h"
 #include "PORTE.h"
+#include "Accelerometer.h"
 
 // Constants
 #define BGCOLOR     					LCD_BLACK
@@ -37,6 +39,8 @@ int x4_pos, y4_pos, color4;
 //Globals for score and life
 uint16_t score = 0; 
 uint16_t life = 3;
+uint16_t cubecount = 0;
+uint16_t fire = 0;
 
 extern Sema4Type LCDFree;
 uint16_t origin[2]; 	// The original ADC value of x,y if the joystick is not touched, used as reference
@@ -46,6 +50,8 @@ int16_t prevx, prevy;	// Previous x and y values of the crosshair
 uint8_t select;  			// joystick push
 uint8_t area[2];
 uint32_t PseudoCount;
+
+jsDataType shipPos;
 
 unsigned long NumCreated;   		// Number of foreground threads created
 unsigned long NumSamples;   		// Incremented every ADC sample, in Producer
@@ -105,12 +111,14 @@ unsigned short MaxWithI1;
 void Device_Init(void){
 	UART_Init();
 	BSP_LCD_OutputInit();
-	BSP_Joystick_Init();
+	//BSP_Joystick_Init();
+	BSP_Accel_Init();
 }
 //------------------Task 1--------------------------------
 // background thread executed at 20 Hz
 //******** Producer *************** 
 int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
+	/*
 	if (rawx > origin[0]){
 		x = x + ((rawx - origin[0]) >> 9);
 	}
@@ -123,6 +131,11 @@ int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 	else{
 		y = y - ((rawy - origin[1]) >> 9);
 	}
+	*/
+	
+	x = x + ((rawx-2050)/70);
+	y = y + ((2050-rawy)/70);
+	
 	if (x > 127){
 		x = 127;}
 	if (x < 0){
@@ -136,14 +149,15 @@ int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 }
 
 void Producer(void){
-	uint16_t rawX,rawY; // raw adc value
+	uint16_t rawX,rawY,rawZ; // raw adc value
 	uint8_t select;
 	jsDataType data;
 	unsigned static long LastTime;  // time at previous ADC sample
 	unsigned long thisTime;         // time at current ADC sample
 	long jitter;                    // time between measured and expected, in us
 	if (1){
-			BSP_Joystick_Input(&rawX,&rawY,&select);
+			//BSP_Joystick_Input(&rawX,&rawY,&select);
+		BSP_Accel_Input(&rawX,&rawY,&rawZ);
 		thisTime = OS_Time();       // current time, 12.5 ns
 		UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
 		NumSamples++;               // number of samples
@@ -178,7 +192,59 @@ void Producer(void){
 // one foreground task created with button push
 // foreground treads run for 1 sec and die
 // ***********ButtonWork*************
+
 void ButtonWork(void){
+	int projectileX, projectileY;
+	int CubeX, CubeY;
+	bool hitBlock = false;
+	uint32_t i;
+//	uint32_t StartTime,CurrentTime,ElapsedTime;
+//	StartTime = OS_MsTime();
+//	ElapsedTime = 0;
+	OS_bWait(&LCDFree);
+	//BSP_LCD_FillScreen(BGCOLOR);
+	projectileX = shipPos.x;
+	projectileY = shipPos.y;
+	while (projectileY > 0 && !hitBlock){
+		BSP_LCD_DrawProjectile(projectileX, projectileY, LCD_WHITE);
+		fire = 1;
+		
+		/*
+		for (i = 0; i < CUBETHREAD; i++)
+		{
+			CubeX = CubeArray[i].position[0];
+			CubeY = CubeArray[i].position[1];
+			while ((projectileX < CubeX-2 || projectileX > CubeX +2) && projectileY != CubeY)
+			{
+				BSP_LCD_DrawProjectile(projectileX, projectileY, LCD_WHITE);
+				OS_Sleep(50);
+			}
+		}
+		//*/
+		
+		BSP_LCD_DrawProjectile(projectileX, projectileY, LCD_BLACK);
+		projectileY -= 4;
+	}
+/*
+		CurrentTime = OS_MsTime();
+		ElapsedTime = CurrentTime - StartTime;
+		BSP_LCD_Message(0,5,0,"Life Time:",LIFETIME);
+		BSP_LCD_Message(1,0,0,"Horizontal Area:",area[0]);
+		BSP_LCD_Message(1,1,0,"Vertical Area:",area[1]);
+		BSP_LCD_Message(1,2,0,"Elapsed Time:",ElapsedTime);
+		OS_Sleep(50);
+	*/
+		
+//	BSP_LCD_FillScreen(BGCOLOR);
+	OS_bSignal(&LCDFree);
+  OS_Kill();  // done, OS does not return from a Kill
+} 
+
+
+/*
+void ButtonWork(void){
+	
+
 	uint32_t StartTime,CurrentTime,ElapsedTime;
 	StartTime = OS_MsTime();
 	ElapsedTime = 0;
@@ -197,14 +263,16 @@ void ButtonWork(void){
 	BSP_LCD_FillScreen(BGCOLOR);
 	OS_bSignal(&LCDFree);
   OS_Kill();  // done, OS does not return from a Kill
+	
 } 
+*/
 
 //************SW1Push*************
 // Called when SW1 Button pushed
 // Adds another foreground task
 // background threads execute once and return
 void SW1Push(void){
-  if(OS_MsTime() > 20 ){ // debounce
+  if(OS_MsTime() > 5000 ){ // debounce
     if(OS_AddThread(&ButtonWork,128,4)){
       NumCreated++; 
     }
@@ -233,7 +301,7 @@ void Consumer(void){
 		
 		OS_bWait(&LCDFree);
 			
-		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
+		BSP_LCD_EraseCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
 		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
 		BSP_LCD_Message(1, 5, 1, "Score ", score);		
@@ -247,13 +315,22 @@ void Consumer(void){
 		OS_bSignal(&LCDFree);
 		prevx = data.x; 
 		prevy = data.y;
+		shipPos.x = data.x;
+		shipPos.y = data.y;
 		
-		/*
+		
 				if (life == 0){
 					break;
 				}
-		*/
+		
 	}
+	//void BSP_LCD_Message (int device, int line, int col, char *string, unsigned int value)
+	
+	BSP_LCD_FillScreen(BGCOLOR);
+	BSP_LCD_Message(1, 5, 0, "Final Score:  ", score);
+	//BSP_LCD_Message(1, 60, 0, "GAME OVER-  ", score);
+	BSP_LCD_DrawString(6, 6, "GAME OVER", LCD_RED);
+	
   OS_Kill();  // done
 }
 
@@ -278,7 +355,7 @@ void CubeNumCalc(void){
 static uint32_t CubeNum = 0;
 void CubeThread1 (void){
 
-	int interval;
+	int interval, init_speed;
 	unsigned char i,j;	 
 	int32_t status,cube;
 	int oldx, oldy, olddir ,a,b, newdir;
@@ -296,22 +373,7 @@ void CubeThread1 (void){
 			}
 			cube = i;
 			
-			/*
-			getXY();
-			getXY();
-			getXY();
-			getXY();
-			getXY();
-			//getXY();
-			//getXY();
-			getDir();
-			getDir();
-			getDir();
-			getDir();
-			getNumThreads();
-			getNumThreads();
-			getNumThreads();
-*/
+
 			
 			CubeArray[i].available = 0; // make this tcb no longer available
 			CubeArray[i].position[0]= next_small_random()%6; //0-5
@@ -322,6 +384,8 @@ void CubeThread1 (void){
 			CubeArray[i].hit = 0;
 			CubeArray[i].expired = 0;
 			
+			init_speed = 1000 +(next_small_random()%3)*1000;
+			
 			
 			 //SEMAPHORES
 		for(a = 0; a < VERTICALNUM; a++){
@@ -331,63 +395,12 @@ void CubeThread1 (void){
 		} 
 			
 			
-			/*
-		if (i ==0){
-			CubeArray[i].available = 0; // make this tcb no longer available
-			CubeArray[i].position[0]= 4; //0-5
-			CubeArray[i].position[1]= 0; //0-5
-			CubeArray[i].direction= 3; //0-3
-			CubeArray[i].color= COLORS[0]; //0-10 //DONE
-			CubeArray[i].lifetime = 20; //
-			CubeArray[i].hit = 0;
-			CubeArray[i].expired = 0;
-		}
-		else if (i ==1){
-			CubeArray[i].available = 0; // make this tcb no longer available
-			CubeArray[i].position[0]= 4; //0-5
-			CubeArray[i].position[1]= 5; //0-5
-			CubeArray[i].direction= 0; //0-3
-			CubeArray[i].color= COLORS[2]; //0-10 //DONE
-			CubeArray[i].lifetime = 20; //
-			CubeArray[i].hit = 0;
-			CubeArray[i].expired = 0;
-		}
-		else if (i ==2){
-			CubeArray[i].available = 0; // make this tcb no longer available
-			CubeArray[i].position[0]= 0; //0-5
-			CubeArray[i].position[1]= 0; //0-5
-			CubeArray[i].direction= 3; //0-3
-			CubeArray[i].color= COLORS[rcolor]; //0-10 //DONE
-			CubeArray[i].lifetime = 20; //
-			CubeArray[i].hit = 0;
-			CubeArray[i].expired = 0;
-		}
-		*/
-		
-		//OS_bWait(&BlockArray[CubeArray[i].position[0]][CubeArray[i].position[1]].BlockFree);
 			
 		
 		CubeNum++;
 		
 	}
 	
-
-
-	
-	//jsDataType data;
-	//JsFifo_Get(&data); 
-	//cube cube1;
-	
-	/*
-	
-	cube1.position[0]= 0;
-	cube1.position[1]= 0;
-	cube1.direction= 3;
-	cube1.color= COLORS[7];
-	cube1.lifetime = 10;
-	cube1.hit = 0;
-	cube1.expired = 0;
-	*/
 	
  // 1.allocate an idle cube for the object
  // 2.initialize color/shape and the first direction
@@ -405,21 +418,31 @@ void CubeThread1 (void){
 				BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
 				OS_bSignal(&LCDFree);
 				
+				
+				
 				//score++;
 				
-				CubeArray[i].hit = 1;
+				life = 0;
+				//CubeArray[i].hit = 1;
 				//OS_bSignal(&CubeArray[i][j].CubeFree); //COME BACK TO THIS!!!!!!!!!!!!!
 			}
+			
  // second, check if the object is expired
-			else if (CubeArray[i].lifetime == 0 ){
-				CubeArray[i].expired = 1;
-				OS_bWait(&LCDFree);
-				BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
-				OS_bSignal(&LCDFree);
-				//life--;
-
-				//OS_bSignal(&CubeArray[i][j].CubeFree); //COME BACK TO THIS!!!!!!!!!!!!!
+			
+			else if (fire==1 ){
+				if (area[0]== CubeArray[i].position[0] && area[1] > CubeArray[i].position[1]){
+					CubeArray[i].expired = 1;
+					OS_bWait(&LCDFree);
+					BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
+					OS_bSignal(&LCDFree);
+					//life--;
+					fire = 0;
+					score = score + 100;
+					cubecount--;
+					//OS_bSignal(&CubeArray[i][j].CubeFree); //COME BACK TO THIS!!!!!!!!!!!!!
+				}
 			}
+			
 			else{
 				
 	// if the object is neither hit nor expired,
@@ -440,137 +463,87 @@ void CubeThread1 (void){
 				
 				// if (CubeArray[i].direction == 3){
 
-					CubeArray[i].position[1]++;
+					//CubeArray[i].position[1]++;
 					if (CubeArray[i].position[1] == 5){
 						//while (CubeArray[i].direction == olddir){
 							//Insert random number generator
 							OS_bWait(&LCDFree);
 						  BSP_LCD_DrawCube(oldx, oldy, LCD_BLACK);
-				//    BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], CubeArray[i].color);	
-				
-				//Signal
-				    // OS_bSignal(&LCDFree);
-              	//	OS_Sleep(100);	;	
-							//	OS_bWait(&LCDFree);
+
 					CubeArray[i].position[0]= next_small_random()%6; //0-5
 			    CubeArray[i].position[1]= 0;
 					BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], CubeArray[i].color);	
 				
 				//Signal
 					OS_bSignal(&LCDFree);
-					OS_Sleep(100);
-						
-             //  if( score > 20 && randcubes==0 ) {
-    /*    for(i = 0; i < randcubes; i++){
-		CubeArray[i].available = 1; // initial available
-	}*/
 
-    //   for (i=0;i<randcubes;i++){
-		//NumCreated += OS_AddThread(&CubeThread1,128,2);
-	//}
-     // }
      
 					}	
 					else {
 					     
 					OS_bWait(&LCDFree);
 					BSP_LCD_DrawCube(oldx, oldy, LCD_BLACK);
+						CubeArray[i].position[1]++;
 					BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], CubeArray[i].color);	
 				
 				//Signal
 					OS_bSignal(&LCDFree);
-					//OS_Sleep(400);
 
-						interval = 4000 - score;
 						
-						if (interval <500){
-							OS_Sleep(500);
+						
+				if(area[0]== CubeArray[i].position[0] && area[1]== CubeArray[i].position[1]){
+			//if(cube1.hit){
+			// Increase the score
+				OS_bWait(&LCDFree);
+				BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
+				OS_bSignal(&LCDFree);
+				
+
+				
+				life = 0;
+				CubeArray[i].hit = 1;
+
+			}
+						else if (fire==1 ){
+				if (area[0]== CubeArray[i].position[0] && area[1] > CubeArray[i].position[1]){
+					CubeArray[i].expired = 1;
+					OS_bWait(&LCDFree);
+					BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
+					OS_bSignal(&LCDFree);
+					//life--;
+					fire = 0;
+					score = score + 100;
+					cubecount--;
+					//OS_bSignal(&CubeArray[i][j].CubeFree); //COME BACK TO THIS!!!!!!!!!!!!!
+				}
+			}
+/*						
+			if (fire && area[0]==CubeArray[i].position[0] && area[1]> CubeArray[i].position[0] ){
+				//CubeArray[i].hit = 1;
+				CubeArray[i].expired = 1;
+				OS_bWait(&LCDFree);
+				BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], LCD_BLACK);
+				OS_bSignal(&LCDFree);
+				fire = 0;
+				
+			}
+			*/
+						interval = init_speed - score;
+						
+						if (interval <250){
+							OS_Sleep(250);
 						}
 						else{						
-							OS_Sleep(4000-score);
+							OS_Sleep(init_speed-score);
 						}
 					}
-				//}
+				
 					
 					
 
 
 
-					//OS_bWait(&BlockArray[CubeArray[i].position[0]][CubeArray[i].position[1]].BlockFree);
-					
-					//OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
-					
-					//CubeArray[i].position[1]++;
 
-			//	}
-				
-				//OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
-			//	OS_bWait(&BlockArray[CubeArray[i].position[0]][CubeArray[i].position[1]].BlockFree);
-				//OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
-				
-				/*
-				
-				if (CubeArray[i].direction == 0){	
-					OS_bWait(&BlockArray[oldx][oldy-1].BlockFree);
-					CubeArray[i].position[1]--;
-					OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
-					if (CubeArray[i].position[1]==0){
-						while(CubeArray[i].direction == olddir){
-							//Insert random number generator
-							CubeArray[i].direction = 3; // Insert random number generator							
-						}
-					}
-				}
-				else if (CubeArray[i].direction == 1){
-					OS_bWait(&BlockArray[oldx-1][oldy].BlockFree);
-					CubeArray[i].position[0]--;
-					OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
-					
-					//CubeArray[i].position[0]--;
-					if (CubeArray[i].position[0] == 0){
-						while (CubeArray[i].direction == olddir){
-							//Insert random number generator
-							CubeArray[i].direction = 2; // Insert random number generator
-						}
-					}
-				}
-				else if (CubeArray[i].direction == 2){
-					OS_bWait(&BlockArray[oldx+1][oldy].BlockFree);
-					CubeArray[i].position[0]++;
-					OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
-					
-					//CubeArray[i].position[0]++;
-					if (CubeArray[i].position[0] == 5){
-						while (CubeArray[i].direction == olddir){
-							//Insert random number generator
-							CubeArray[i].direction = 1; // Insert random number generator
-						}
-					}
-				}
-				else if (CubeArray[i].direction == 3){
-					OS_bWait(&BlockArray[oldx][oldy+1].BlockFree);
-					CubeArray[i].position[1]++;
-					OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
-					
-					//CubeArray[i].position[1]++;
-					if (CubeArray[i].position[1] == 5){
-						while (CubeArray[i].direction == olddir){
-							//Insert random number generator
-							CubeArray[i].direction = 0; // Insert random number generator
-						}
-					}
-				}
-				*/				
-				
-				//Wait(insert semaphore)
-				//OS_bWait(&LCDFree);
-			//	BSP_LCD_DrawCube(oldx, oldy, LCD_BLACK);
-			//	BSP_LCD_DrawCube(CubeArray[i].position[0], CubeArray[i].position[1], CubeArray[i].color);	
-				
-				//Signal
-			//	OS_bSignal(&LCDFree);
-				
-				//OS_bSignal(&BlockArray[oldx][oldy].BlockFree);
 				
 				if (life == 0){
 					break;
@@ -583,8 +556,10 @@ void CubeThread1 (void){
 			}
 		}
 		OS_Kill(); // Cube should disappear, kill the thread
+		
 	}
 	OS_Kill(); //Life = 0, game is over, kill the thread
+
 }
 
 void Score (void){
@@ -602,9 +577,10 @@ void Score (void){
 void Populate (void){
 	while(1){
 	
-		if (NumCreated < 7){
+		if (cubecount < 6){
 			
 			NumCreated += OS_AddThread(&CubeThread1,128,2);
+			cubecount++;
 			
 		}
 		OS_Sleep(1000);
@@ -619,7 +595,8 @@ void Populate (void){
 
 void CrossHair_Init(void){
 	BSP_LCD_FillScreen(BGCOLOR);
-	BSP_Joystick_Input(&origin[0],&origin[1],&select);
+	//BSP_Joystick_Input(&origin[0],&origin[1],&select);
+	BSP_Accel_Input(&origin[0],&origin[1],&origin[2]);
 }
 
 //******************* Main Function**********
